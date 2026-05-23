@@ -1,0 +1,15 @@
+Dilarang
+❌ Menggunakan model yang sudah tersedia dari TensorFlow Hub atau sumber sejenis (kecuali kamu benar-benar membangun/menyusun arsitekturnya sendiri dan fine-tune sesuai tugas).- ini di perbolehkan jika melakukan fine tuning atau training sendiri
+❌ Menggunakan model langsung dari layanan API seperti ChatGPT API, Gemini API, dan sejenisnya untuk fungsi utama model klasifikasi/prediksi.- ini boleh asalkan fitur tambahan bukan fitur utama
+❌ Menggunakan AutoML untuk membuat model AI diskriminatif
+(Vertex AI hanya diperbolehkan untuk use case Generative AI).
+Diperbolehkan
+✅ Membangun model Deep Learning dengan TensorFlow Functional API atau Model Subclassing yang disesuaikan dataset & permasalahan bisnis.
+✅ Mengimplementasikan minimal 1 komponen kustom lanjutan:
+Custom Layer, atau
+Custom Loss Function, atau
+Custom Callback.
+✅ Menyimpan & mengekspor model terlatih penuh dalam format siap produksi:
+.keras atau SavedModel
+✅ Membuat kode sederhana untuk proses inference model.
+✅ Menggunakan pre-trained model sebagai backbone/encoder asalkan tidak dianggap “model langsung dari TensorFlow Hub/sumber serupa” dan tetap masuk ke arsitektur/modeling TensorFlow yang kamu buat (umumnya ini masih termasuk “bentuk fine-tuning”, bukan “pakai API jadi output”).

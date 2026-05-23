@@ -1,0 +1,115 @@
+Skill_Internasional_Kaggle,Kode Unit,Judul Unit,Similarity_Score
+python,TIK.PR02.002.01,Membuat Program Dasar,0.38160622119903564
+java,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.595518946647644
+javascript,J.620100.006.1,Membuat Halaman Web Dinamis,0.324027955532074
+c,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.5532424449920654
+ruby,E.360035.010.01,Menghitung Likuiditas,0.3278864324092865
+php,J.62DDS00.005.1,Membersihkan Data,0.3551785945892334
+go,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.44587671756744385
+rust,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.4569976329803467
+typescript,M.741000.007.01,Melaksanakan Penulisan Teknis (Scriptwriting),0.5609687566757202
+kotlin,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.6059019565582275
+swift,TIK.PR02.024.01,Memberikan Dukungan Teknis,0.3722989857196808
+scala,J.62DDS00.007.1,Membangun Model,0.47510308027267456
+perl,E.360035.010.01,Menghitung Likuiditas,0.5071702599525452
+shell scripting,M.741000.007.01,Melaksanakan Penulisan Teknis (Scriptwriting),0.5201781988143921
+r,E.360035.010.01,Menghitung Likuiditas,0.5953190922737122
+html,J.620100.006.1,Membuat Halaman Web Dinamis,0.45241034030914307
+css,J.62DDS00.009.1,Mengomunikasikan Hasil,0.443768709897995
+react,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.6236124634742737
+vue js,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.48807159066200256
+angular,J.62GIM00.034.2,Melakukan Integrasi Animasi,0.3434089422225952
+node js,TIK.PR02.024.01,Memberikan Dukungan Teknis,0.433386892080307
+django,J.62GIM00.035.2,Melakukan Integrasi Audio,0.30938252806663513
+flask,E.360035.010.01,Menghitung Likuiditas,0.47822484374046326
+rest api,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.45760565996170044
+graphql,J.62DDS00.001.1,Menentukan Objek Data,0.4907294809818268
+responsive design,M.741000.002.03,Mengoperasikan Perangkat Lunak Desain,0.710364818572998
+web accessibility,J.62GIM00.044.1,Mengimplementasikan User Interface,0.46051546931266785
+seo,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.5657951831817627
+android,J.62GIM00.044.1,Mengimplementasikan User Interface,0.36076197028160095
+ios,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.6226411461830139
+react native,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.42498520016670227
+flutter,J.62GIM00.002.2,Membuat Mekanika Game,0.410552978515625
+mobile ui ux,J.62GIM00.044.1,Mengimplementasikan User Interface,0.4833756983280182
+mobile security,J.62KI00.028.1,Menerapkan Keamanan Perangkat Lunak,0.6805999279022217
+app testing,TIK.PR02.003.01,Melaksanakan Pengujian Unit Program,0.6144449710845947
+aws,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.46529439091682434
+azure,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.557246208190918
+gcp,K.64LKM00.020.1,Menyusun Laporan Keuangan LKM,0.4044875204563141
+docker,J.62GIM00.043.1,Menerapkan Mekanika Game,0.42292559146881104
+kubernetes,J.62GIM00.043.1,Menerapkan Mekanika Game,0.5289493203163147
+ci cd,M.69PTA00.001.3,Memproses Entri Jurnal,0.40744853019714355
+jenkins,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.5316963791847229
+terraform,TIK.PR02.024.01,Memberikan Dukungan Teknis,0.39084601402282715
+cloudformation,J.62KI00.031.1,Mengelola Keamanan Layanan Awan (Cloud Security),0.7207564115524292
+ansible,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.5936194062232971
+microservices,J.62GIM00.045.1,Mengintegrasikan Backend Service,0.42299145460128784
+serverless,TIK.PR02.019.01,Membuat Skrip Sisi Server (Backend),0.43420928716659546
+machine learning,M.70DAN00.008.1,Menganalisis Data Menggunakan Alat Pemodelan,0.42530742287635803
+deep learning,J.62KAM00.001.2,Mengklasifikasikan Informasi yang Bersifat Rahasia,0.44930997490882874
+tensorflow,E.360035.012.01,Menghitung Arus Kas (Cash Flow),0.3542942702770233
+pytorch,M.741000.012.01,Membuat Purwarupa (Prototyping),0.4767240881919861
+scikit learn,TIK.PR02.002.01,Membuat Program Dasar,0.4389573037624359
+data analysis,M.70DAN00.007.1,Menganalisis Data Menggunakan Statistik,0.8654538989067078
+statistics,M.70DAN00.007.1,Menganalisis Data Menggunakan Statistik,0.7595954537391663
+pandas,J.62GIM00.034.2,Melakukan Integrasi Animasi,0.2992648184299469
+numpy,E.360035.010.01,Menghitung Likuiditas,0.402864933013916
+sql,J.62DDS00.005.1,Membersihkan Data,0.573467493057251
+tableau,M.741000.005.02,Menyusun Background/Latar Belakang,0.6037715673446655
+power bi,TIK.PR02.024.01,Memberikan Dukungan Teknis,0.5144157409667969
+jupyter,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.49388986825942993
+mysql,J.62DDS00.005.1,Membersihkan Data,0.3956550359725952
+postgresql,TIK.PR02.007.01,Membuat Laporan Data,0.3682255744934082
+mongodb,J.62GIM00.040.2,Mengimplementasikan Monetisasi,0.47452104091644287
+oracle,J.62DDS00.005.1,Membersihkan Data,0.4304651916027069
+cassandra,M.69PTA00.001.3,Memproses Entri Jurnal,0.3327270448207855
+redis,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.546784520149231
+database design,J.62GIM00.042.1,Membuat Struktur Data,0.6231478452682495
+query optimization,J.62GIM00.047.2,Mengimplementasikan Optimasi,0.6104235053062439
+nosql,M.70DAN00.002.1,Menentukan Kebutuhan Data,0.3784462511539459
+leadership,M.70DAN00.014.1,Memberikan Dukungan Pengambilan Keputusan,0.4148406684398651
+communication,TIK.PR02.024.01,Memberikan Dukungan Teknis,0.592319905757904
+problem solving,E.360035.011.01,Menghitung Solvabilitas,0.6682043075561523
+critical thinking,M.70DAN00.014.1,Memberikan Dukungan Pengambilan Keputusan,0.5765101313591003
+teamwork,E.360032.028.01,Melakukan Evaluasi Beban Usaha,0.4670455753803253
+time management,TIK.PR05.001.01,Melakukan Pemeliharaan Sistem,0.42123788595199585
+adaptability,E.360035.011.01,Menghitung Solvabilitas,0.5882883071899414
+creativity,M.741000.006.01,Melaksanakan Penulisan Kreatif (Copywriting),0.5910802483558655
+negotiation,M.70DAN00.014.1,Memberikan Dukungan Pengambilan Keputusan,0.471345990896225
+mentoring,E.360032.028.01,Melakukan Evaluasi Beban Usaha,0.5011202096939087
+project management,M.741000.008.02,Menetapkan Strategi Desain,0.6107500791549683
+strategic planning,M.741000.008.02,Menetapkan Strategi Desain,0.7040995955467224
+decision making,M.70DAN00.014.1,Memberikan Dukungan Pengambilan Keputusan,0.8939154148101807
+financial analysis,E.360034.014.01,Melakukan Analisis Rasio Keuangan,0.8842065334320068
+business development,M.70DAN00.001.1,Mengidentifikasi Masalah Bisnis,0.7130662798881531
+market research,E.360034.014.01,Melakukan Analisis Rasio Keuangan,0.5992065668106079
+business acumen,M.70DAN00.001.1,Mengidentifikasi Masalah Bisnis,0.6936944127082825
+sales,E.360035.009.01,Menghitung Profitabilitas,0.4975230097770691
+marketing,M.70DAN00.001.1,Mengidentifikasi Masalah Bisnis,0.5174508094787598
+budget management,E.360035.004.01 ,Menyusun Laporan Keuangan,0.6511093378067017
+p l management,TIK.PR05.001.01,Melakukan Pemeliharaan Sistem,0.5446075797080994
+user experience,J.62GIM00.044.1,Mengimplementasikan User Interface,0.6706308722496033
+user interface,J.62GIM00.044.1,Mengimplementasikan User Interface,0.9267631769180298
+graphic design,M.741000.013.01,Mempresentasikan Karya Desain,0.7745762467384338
+web design,J.620100.006.1,Membuat Halaman Web Dinamis,0.6826710104942322
+adobe creative suite,M.741000.013.01,Mempresentasikan Karya Desain,0.654014527797699
+figma,J.62DDS00.007.1,Membangun Model,0.4116351306438446
+wireframing,TIK.PR02.013.01,Melakukan Refactoring Kode,0.4294300973415375
+prototyping,M.741000.002.03,Mengoperasikan Perangkat Lunak Desain,0.6584070324897766
+penetration testing,J.620900.022.01,Melakukan Pengujian Keamanan Jaringan (Network Security Testing),0.6114050149917603
+network security,J.620900.022.01,Melakukan Pengujian Keamanan Jaringan (Network Security Testing),0.7463886737823486
+encryption,TIK.PR02.026.01,Menerapkan Enkripsi Data,0.8562757968902588
+firewalls,J.620900.023.01,Melakukan Konfigurasi Tembok Api (Firewall),0.8013809323310852
+security protocols,J.620900.002.03,Mengoperasikan Piranti Lunak Keamanan,0.7612216472625732
+risk assessment,M.69PTA00.016.1,Memberikan Dukungan Penilaian Risiko,0.8843739032745361
+compliance,J.62KAM00.004.2,Melaksanakan Validasi Integritas Informasi,0.6044864058494568
+security architecture,J.62KAM00.013.2,Menyusun Rencana Pelaksanaan Pelindungan Fisik Keamanan Informasi,0.8010014891624451
+agile,J.62GIM00.038.2,Mengimplementasikan AI,0.5485673546791077
+scrum,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.4045591950416565
+kanban,TIK.PR02.024.01,Memberikan Dukungan Teknis,0.41357916593551636
+jira,J.62KI00.022.1,Melakukan Penanganan Kerentanan,0.5237951874732971
+confluence,TIK.PR02.024.01,Memberikan Dukungan Teknis,0.519933819770813
+documentation,M.69PTA00.001.3,Memproses Entri Jurnal,0.7088531851768494
+technical writing,M.741000.007.01,Melaksanakan Penulisan Teknis (Scriptwriting),0.7402763962745667
+presentation skills,M.741000.013.01,Mempresentasikan Karya Desain,0.5370333790779114

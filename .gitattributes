@@ -1,0 +1,3 @@
+skillbridge_savedmodel/** filter=lfs diff=lfs merge=lfs -text
+skillbridge_savedmodel/variables/variables.data-00000-of-00001 filter=lfs diff=lfs merge=lfs -text
+skillbridge_savedmodel/**/variables.data-00000-of-00001 filter=lfs diff=lfs merge=lfs -text
