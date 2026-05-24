@@ -47,12 +47,10 @@ app = FastAPI(
 )
 
 # in-memory accumulator untuk audit fairness (MVP)
-# production: pindahkan ke DB + scraping pipeline yang lebih rapi
 app.state.fairness_acc = init_fairness_accumulator()
 
 
 # ===== ModelBridge trained assets =====
-SKILLBRIDGE_MODEL_PATH = "skillbridge.keras"  # (not used in runtime)
 SKILLBRIDGE_SAVEDMODEL_PATH = "skillbridge_savedmodel"
 
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -90,6 +88,13 @@ class MatchRequest(BaseModel):
     job_text: str
 
 
+class MatchMultiRequest(BaseModel):
+    cv_text: str
+    jobs: list[dict]
+    # jobs item: {"job_text": str, "job_id": str(optional)}
+    top_k: int = 5
+
+
 class InterviewRequest(BaseModel):
     cv_text: str
     job_text: str
@@ -122,9 +127,8 @@ def get_embedding(text: str) -> np.ndarray:
 
     mask = tf.cast(tf.expand_dims(inputs["attention_mask"], -1), tf.float32)
     sum_embeddings = tf.reduce_sum(outputs * mask, axis=1)
-    sum_mask = tf.clip_by_value(
-        tf.reduce_sum(mask, axis=1), 1e-9, tf.float32.max
-    )
+    sum_mask = tf.clip_by_value(tf.reduce_sum(
+        mask, axis=1), 1e-9, tf.float32.max)
     return (sum_embeddings / sum_mask).numpy()
 
 
@@ -135,7 +139,6 @@ def health_check():
 
 
 def _predict_cocok_tidak(cv_text: str, job_text: str):
-    """Prediksi 0/1 (Tidak Cocok/Cocok) dari skillbridge_savedmodel."""
     if saved_sig is None:
         raise Exception(
             "skillbridge_savedmodel belum ter-load. Pastikan folder 'skillbridge_savedmodel' ada di root project."
@@ -159,7 +162,6 @@ def _predict_cocok_tidak(cv_text: str, job_text: str):
 
 
 def _topk_skkni(cv_text: str, job_text: str, top_k: int = 5):
-    """Mapping SKKNI unit via cosine similarity terhadap embedding unit pada skkni_embeddings.json."""
     emb_cv = get_embedding(cv_text)
     emb_job = get_embedding(job_text)
     emb_pair = (emb_cv + emb_job) / 2.0
@@ -178,6 +180,52 @@ def _topk_skkni(cv_text: str, job_text: str, top_k: int = 5):
     return scored[: max(1, top_k)]
 
 
+def _compute_gap_units(top_units, sim, gap_threshold):
+    gap_units = []
+    for u, t, s in top_units:
+        if s < gap_threshold:
+            gap_units.append(
+                {"kode_unit": u, "judul_unit": t, "similarity": round(s, 6)})
+    return gap_units
+
+
+def _generate_ai_analysis(cv_text: str, job_text: str, score: float, cocok_label, cocok_prob,
+                          formatted_top_units, gap_units):
+    safe_cv = redact_pii(cv_text)
+    safe_job = redact_pii(job_text)
+
+    skkni_context = json.dumps(
+        {
+            "top_units": formatted_top_units,
+            "gap_units": gap_units,
+            "match_score": score,
+            "prediksi_cocok": cocok_label,
+            "prob_cocok": cocok_prob,
+        },
+        ensure_ascii=False,
+    )
+
+    prob_str = f"{cocok_prob:.3f}" if cocok_prob is not None else "N/A"
+
+    analysis_prompt = (
+        "Kamu adalah AI Career Coach yang memberi analisis berdasarkan unit SKKNI. "
+        "Wajib:\n"
+        "1) jelaskan singkat kenapa skill kandidat cocok/kurang, rujuk ke top_units dan gap_units (kode_unit).\n"
+        "2) berikan rekomendasi tindakan belajar/pelatihan mengacu gap_units (kode_unit).\n"
+        "3) Jangan menebak data pribadi kandidat.\n\n"
+        f"Data terstruktur (JSON)={skkni_context}\n"
+        f"Prediksi Cocok/Tidak Cocok={cocok_label} (prob Cocok={prob_str})\n"
+        f"Cuplikan CV (PII sudah disensor)={safe_cv[:250]}.\n"
+        f"Cuplikan Job (PII sudah disensor)={safe_job[:250]}."
+    )
+
+    try:
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        return model.generate_content(analysis_prompt).text
+    except Exception:
+        return "(Gemini quota habis) Analisis tidak tersedia saat ini."
+
+
 @app.post("/api/v1/match")
 async def calculate_match(data: MatchRequest):
     try:
@@ -193,88 +241,25 @@ async def calculate_match(data: MatchRequest):
         except Exception:
             cocok_label, cocok_prob = None, None
 
-        # Privacy by design: redact sebelum dikirim ke Gemini
-        safe_cv = redact_pii(data.cv_text)
-        safe_job = redact_pii(data.job_text)
-
-        # Explainable (SKKNI unit)
         top_units = _topk_skkni(data.cv_text, data.job_text, top_k=5)
         formatted_top_units = [
             {"kode_unit": u, "judul_unit": t, "similarity": round(s, 6)}
             for (u, t, s) in top_units
         ]
 
-        # MVP gap: unit yang sim < gap_threshold
         gap_threshold = max(-0.05, (float(sim) - 0.2) / 1.0)
-        gap_units = []
-        for (u, t, s) in top_units:
-            if s < gap_threshold:
-                gap_units.append(
-                    {"kode_unit": u, "judul_unit": t,
-                        "similarity": round(s, 6)}
-                )
+        gap_units = _compute_gap_units(top_units, float(sim), gap_threshold)
 
-        # Cache in-memory
-        cache_key = hash(
-            (safe_cv, safe_job, score, cocok_label, cocok_prob,
-             str(formatted_top_units), str(gap_units))
-        )
-        if not hasattr(app.state, "gemini_cache"):
-            app.state.gemini_cache = {}
-        cached = app.state.gemini_cache.get(cache_key)
-
-        # fairness proxy label (bahasa + panjang CV)
         group_label = infer_group_label_bahasa_panjang(data.cv_text)
-        if cached is None:
-
-            skkni_context = json.dumps(
-                {
-                    "top_units": formatted_top_units,
-                    "gap_units": gap_units,
-                    "match_score": score,
-                    "prediksi_cocok": cocok_label,
-                    "prob_cocok": cocok_prob,
-                },
-                ensure_ascii=False,
-            )
-
-            prob_str = f"{cocok_prob:.3f}" if cocok_prob is not None else "N/A"
-
-            analysis_prompt = (
-                "Kamu adalah AI Career Coach yang memberi analisis berdasarkan unit SKKNI. "
-                "Wajib:\n"
-                "1) jelaskan singkat kenapa skill kandidat cocok/kurang, rujuk ke top_units dan gap_units (kode_unit).\n"
-                "2) berikan rekomendasi tindakan belajar/pelatihan mengacu gap_units (kode_unit).\n"
-                "3) Jangan menebak data pribadi kandidat.\n\n"
-                f"Data terstruktur (JSON)={skkni_context}\n"
-                f"Prediksi Cocok/Tidak Cocok={cocok_label} (prob Cocok={prob_str})\n"
-                f"Cuplikan CV (PII sudah disensor)={safe_cv[:250]}.\n"
-                f"Cuplikan Job (PII sudah disensor)={safe_job[:250]}."
-            )
-
-            try:
-                model = genai.GenerativeModel("gemini-2.0-flash")
-                cached = model.generate_content(analysis_prompt).text
-                app.state.gemini_cache[cache_key] = cached
-            except Exception:
-                # Jika quota/token Gemini habis, jangan bikin endpoint gagal.
-                # Return fallback agar engine tetap bisa dipakai untuk matching.
-                cached = "(Gemini quota habis) Analisis tidak tersedia saat ini."
-                app.state.gemini_cache[cache_key] = cached
-
-        # fairness audit event (proxy: bahasa + panjang CV)
-        try:
-            add_event(
-                app.state.fairness_acc,
-                {
-                    "group_label": group_label,
-                    "match_score": float(score),
-                    "prob_cocok": float(cocok_prob) if cocok_prob is not None else None,
-                    "has_gap": len(gap_units) > 0,
-                },
-            )
-        except Exception:
-            pass
+        add_event(
+            app.state.fairness_acc,
+            {
+                "group_label": group_label,
+                "match_score": float(score),
+                "prob_cocok": float(cocok_prob) if cocok_prob is not None else None,
+                "has_gap": len(gap_units) > 0,
+            },
+        )
 
         return {
             "success": True,
@@ -283,9 +268,100 @@ async def calculate_match(data: MatchRequest):
             "prob_cocok": cocok_prob,
             "top_units": formatted_top_units,
             "gap_units": gap_units,
-            "ai_analysis": cached,
+            "ai_analysis": _generate_ai_analysis(
+                data.cv_text,
+                data.job_text,
+                score,
+                cocok_label,
+                cocok_prob,
+                formatted_top_units,
+                gap_units,
+            ),
         }
 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/match-multi")
+async def match_multi(data: MatchMultiRequest):
+    try:
+        if not isinstance(data.jobs, list) or len(data.jobs) == 0:
+            raise HTTPException(
+                status_code=400, detail="jobs must be a non-empty array")
+
+        results = []
+        for idx, job in enumerate(data.jobs):
+            if not isinstance(job, dict) or "job_text" not in job:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"jobs[{idx}] must be an object with at least 'job_text'",
+                )
+
+            job_text = job["job_text"]
+            job_id = job.get("job_id")
+
+            emb_cv = get_embedding(data.cv_text)
+            emb_job = get_embedding(job_text)
+            sim = cosine_similarity(emb_cv, emb_job)[0][0]
+            score = round(float(sim) * 100, 2)
+
+            cocok_label, cocok_prob = None, None
+            try:
+                cocok_label, cocok_prob = _predict_cocok_tidak(
+                    data.cv_text, job_text)
+            except Exception:
+                cocok_label, cocok_prob = None, None
+
+            top_units = _topk_skkni(data.cv_text, job_text, top_k=data.top_k)
+            formatted_top_units = [
+                {"kode_unit": u, "judul_unit": t, "similarity": round(s, 6)}
+                for (u, t, s) in top_units
+            ]
+
+            gap_threshold = max(-0.05, (float(sim) - 0.2) / 1.0)
+            gap_units = _compute_gap_units(
+                top_units, float(sim), gap_threshold)
+
+            group_label = infer_group_label_bahasa_panjang(data.cv_text)
+            try:
+                add_event(
+                    app.state.fairness_acc,
+                    {
+                        "group_label": group_label,
+                        "match_score": float(score),
+                        "prob_cocok": float(cocok_prob) if cocok_prob is not None else None,
+                        "has_gap": len(gap_units) > 0,
+                    },
+                )
+            except Exception:
+                pass
+
+            results.append(
+                {
+                    "job_id": job_id,
+                    "job_index": idx,
+                    "match_score": score,
+                    "prediksi_cocok": cocok_label,
+                    "prob_cocok": cocok_prob,
+                    "top_units": formatted_top_units,
+                    "gap_units": gap_units,
+                    "ai_analysis": _generate_ai_analysis(
+                        data.cv_text,
+                        job_text,
+                        score,
+                        cocok_label,
+                        cocok_prob,
+                        formatted_top_units,
+                        gap_units,
+                    ),
+                }
+            )
+
+        return {"success": True, "results": results}
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -300,7 +376,6 @@ async def match_topk(data: MatchTopKRequest):
             1.0 - data.similarity_threshold)
 
         top_units = _topk_skkni(data.cv_text, data.job_text, top_k=data.top_k)
-
         formatted_units = [
             {"kode_unit": u, "judul_unit": t, "similarity": round(s, 6)}
             for (u, t, s) in top_units
@@ -328,14 +403,10 @@ def fairness_report():
 
 @app.post("/api/v1/mock-interview")
 async def generate_interview(data: InterviewRequest):
-
     trial_models = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-pro"]
     for model_name in trial_models:
         try:
-            try:
-                model = genai.GenerativeModel(model_name)
-            except Exception:
-                continue
+            model = genai.GenerativeModel(model_name)
 
             safe_cv = redact_pii(data.cv_text)
             safe_job = redact_pii(data.job_text)
