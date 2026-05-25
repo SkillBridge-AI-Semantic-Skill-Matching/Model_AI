@@ -1,5 +1,6 @@
 import json
-import google.generativeai as genai
+import os
+import requests
 import numpy as np
 import tensorflow as tf
 from fastapi import FastAPI, HTTPException
@@ -49,14 +50,42 @@ app = FastAPI(
 # in-memory accumulator untuk audit fairness (MVP)
 app.state.fairness_acc = init_fairness_accumulator()
 
-
 # ===== ModelBridge trained assets =====
 SKILLBRIDGE_SAVEDMODEL_PATH = "skillbridge_savedmodel"
 
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-GEMINI_API_KEY = "AIzaSyBp3zVlMLasbyfkBF_mnGeF-nrGIEJo-4A"
 
-genai.configure(api_key=GEMINI_API_KEY)
+# ---- OpenRouter ----
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+if not OPENROUTER_API_KEY:
+    # fallback baca file .env sederhana tanpa python-dotenv
+    # (opsi B: pastikan user menaruh key di file .env)
+    try:
+        from pathlib import Path
+        env_path = Path(__file__).resolve().parent / ".env"
+        if env_path.exists():
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip()
+                v = v.strip().strip('"').strip("'")
+                if k == "OPENROUTER_API_KEY" and v:
+                    OPENROUTER_API_KEY = v
+                    os.environ["OPENROUTER_API_KEY"] = v
+                    break
+    except Exception:
+        pass
+
+
+OPENROUTER_BASE_URL = os.getenv(
+    "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+OPENROUTER_CHAT_URL = f"{OPENROUTER_BASE_URL}/chat/completions"
+
+# Default model (bisa kamu ganti dengan yang lain dari GET /api/v1/models)
+OPENROUTER_MODEL_ID = os.getenv("OPENROUTER_MODEL_ID", "qwen/qwen3.7-max")
+
 
 # ---- load embedding backbone ----
 tokenizer = None
@@ -91,7 +120,6 @@ class MatchRequest(BaseModel):
 class MatchMultiRequest(BaseModel):
     cv_text: str
     jobs: list[dict]
-    # jobs item: {"job_text": str, "job_id": str(optional)}
     top_k: int = 5
 
 
@@ -121,15 +149,48 @@ def get_embedding(text: str) -> np.ndarray:
         return_tensors="tf",
     )
 
-    outputs = bert_backbone(
-        inputs["input_ids"], attention_mask=inputs["attention_mask"]
-    )[0]
+    outputs = bert_backbone(inputs["input_ids"],
+                            attention_mask=inputs["attention_mask"])[0]
 
     mask = tf.cast(tf.expand_dims(inputs["attention_mask"], -1), tf.float32)
     sum_embeddings = tf.reduce_sum(outputs * mask, axis=1)
     sum_mask = tf.clip_by_value(tf.reduce_sum(
         mask, axis=1), 1e-9, tf.float32.max)
     return (sum_embeddings / sum_mask).numpy()
+
+
+def _openrouter_chat(prompt: str, *, model_id: str | None = None) -> str:
+    """Call OpenRouter chat/completions and return assistant text."""
+    if not OPENROUTER_API_KEY:
+        raise Exception("OPENROUTER_API_KEY belum di-set")
+
+    model_id = model_id or OPENROUTER_MODEL_ID
+
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "model": model_id,
+        "messages": [
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 512
+    }
+
+    r = requests.post(OPENROUTER_CHAT_URL, headers=headers,
+                      json=payload, timeout=60)
+    if r.status_code >= 400:
+        # tampilkan sebagian body supaya bisa diketahui penyebabnya (quota/invalid model/rate limit/etc)
+        snippet = (r.text or "")[:1200]
+        raise Exception(
+            f"OpenRouter error {r.status_code} (model={model_id}): {snippet}")
+
+    data = r.json()
+    # OpenAI-compatible format
+    return data["choices"][0]["message"]["content"]
 
 
 @app.get("/")
@@ -189,8 +250,15 @@ def _compute_gap_units(top_units, sim, gap_threshold):
     return gap_units
 
 
-def _generate_ai_analysis(cv_text: str, job_text: str, score: float, cocok_label, cocok_prob,
-                          formatted_top_units, gap_units):
+def _generate_ai_analysis(
+    cv_text: str,
+    job_text: str,
+    score: float,
+    cocok_label,
+    cocok_prob,
+    formatted_top_units,
+    gap_units,
+):
     safe_cv = redact_pii(cv_text)
     safe_job = redact_pii(job_text)
 
@@ -220,18 +288,16 @@ def _generate_ai_analysis(cv_text: str, job_text: str, score: float, cocok_label
     )
 
     try:
-        model = genai.GenerativeModel("gemini-2.0-flash")
-        return model.generate_content(analysis_prompt).text
-    except Exception:
-        return "(Gemini quota habis) Analisis tidak tersedia saat ini."
+        return _openrouter_chat(analysis_prompt)
+    except Exception as e:
+        return f"(OpenRouter error detail) {str(e)[:500]}"
 
 
 @app.post("/api/v1/match")
 async def calculate_match(data: MatchRequest):
     try:
-        emb_cv = get_embedding(data.cv_text)
-        emb_job = get_embedding(data.job_text)
-        sim = cosine_similarity(emb_cv, emb_job)[0][0]
+        sim = cosine_similarity(get_embedding(
+            data.cv_text), get_embedding(data.job_text))[0][0]
         score = round(float(sim) * 100, 2)
 
         cocok_label, cocok_prob = None, None
@@ -243,8 +309,7 @@ async def calculate_match(data: MatchRequest):
 
         top_units = _topk_skkni(data.cv_text, data.job_text, top_k=5)
         formatted_top_units = [
-            {"kode_unit": u, "judul_unit": t, "similarity": round(s, 6)}
-            for (u, t, s) in top_units
+            {"kode_unit": u, "judul_unit": t, "similarity": round(s, 6)} for (u, t, s) in top_units
         ]
 
         gap_threshold = max(-0.05, (float(sim) - 0.2) / 1.0)
@@ -315,8 +380,7 @@ async def match_multi(data: MatchMultiRequest):
 
             top_units = _topk_skkni(data.cv_text, job_text, top_k=data.top_k)
             formatted_top_units = [
-                {"kode_unit": u, "judul_unit": t, "similarity": round(s, 6)}
-                for (u, t, s) in top_units
+                {"kode_unit": u, "judul_unit": t, "similarity": round(s, 6)} for (u, t, s) in top_units
             ]
 
             gap_threshold = max(-0.05, (float(sim) - 0.2) / 1.0)
@@ -337,6 +401,20 @@ async def match_multi(data: MatchMultiRequest):
             except Exception:
                 pass
 
+            # Limit pemanggilan OpenRouter untuk mencegah quota limit
+            MAX_OPENROUTER_JOBS = 3
+            ai_text = None
+            if idx < MAX_OPENROUTER_JOBS:
+                ai_text = _generate_ai_analysis(
+                    data.cv_text,
+                    job_text,
+                    score,
+                    cocok_label,
+                    cocok_prob,
+                    formatted_top_units,
+                    gap_units,
+                )
+
             results.append(
                 {
                     "job_id": job_id,
@@ -346,15 +424,7 @@ async def match_multi(data: MatchMultiRequest):
                     "prob_cocok": cocok_prob,
                     "top_units": formatted_top_units,
                     "gap_units": gap_units,
-                    "ai_analysis": _generate_ai_analysis(
-                        data.cv_text,
-                        job_text,
-                        score,
-                        cocok_label,
-                        cocok_prob,
-                        formatted_top_units,
-                        gap_units,
-                    ),
+                    "ai_analysis": ai_text,
                 }
             )
 
@@ -377,8 +447,7 @@ async def match_topk(data: MatchTopKRequest):
 
         top_units = _topk_skkni(data.cv_text, data.job_text, top_k=data.top_k)
         formatted_units = [
-            {"kode_unit": u, "judul_unit": t, "similarity": round(s, 6)}
-            for (u, t, s) in top_units
+            {"kode_unit": u, "judul_unit": t, "similarity": round(s, 6)} for (u, t, s) in top_units
         ]
 
         return {
@@ -403,22 +472,29 @@ def fairness_report():
 
 @app.post("/api/v1/mock-interview")
 async def generate_interview(data: InterviewRequest):
-    trial_models = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-pro"]
-    for model_name in trial_models:
-        try:
-            model = genai.GenerativeModel(model_name)
+    trial_models = [
+        OPENROUTER_MODEL_ID,
+        "~openai/gpt-mini-latest",
+        "~anthropic/claude-haiku-latest",
+    ]
 
+    last_error: str = ""  # untuk mengembalikan error paling akhir ke client
+    for model_id in trial_models:
+        try:
             safe_cv = redact_pii(data.cv_text)
             safe_job = redact_pii(data.job_text)
 
             prompt = (
                 "Buat 5 pertanyaan interview teknis SKKNI dalam Bahasa Indonesia. "
-                f"CV: {safe_cv[:250]}. Job: {safe_job[:250]}. Unit: {data.skkni_unit}."
+                f"CV: {safe_cv[:200]}. Job: {safe_job[:200]}. Unit: {data.skkni_unit}. "
+                "Berikan juga pertanyaan lanjutan (follow-up) untuk menguji kedalaman kandidat."
             )
 
-            response = model.generate_content(prompt)
-            return {"success": True, "interview_content": response.text}
-        except Exception:
+            text = _openrouter_chat(prompt, model_id=model_id)
+            return {"success": True, "interview_content": text}
+        except Exception as e:
+            last_error = str(e)
             continue
 
-    raise HTTPException(status_code=500, detail="Gemini API Error")
+    raise HTTPException(
+        status_code=500, detail=last_error or "OpenRouter API Error")
