@@ -259,6 +259,7 @@ def _generate_ai_analysis(
     formatted_top_units,
     gap_units,
 ):
+
     safe_cv = redact_pii(cv_text)
     safe_job = redact_pii(job_text)
 
@@ -289,8 +290,22 @@ def _generate_ai_analysis(
 
     try:
         return _openrouter_chat(analysis_prompt)
-    except Exception as e:
-        return f"(OpenRouter error detail) {str(e)[:500]}"
+    except Exception:
+        # fallback: jangan tampilkan error mentah/traceback
+        top_preview = formatted_top_units[:3] if formatted_top_units else []
+        gap_preview = gap_units[:3] if gap_units else []
+        return (
+            "Analisis sementara tidak tersedia karena layanan LLM sedang bermasalah. "
+            "Berikut ringkasan berbasis data SKKNI (perkiraan):\n\n"
+            "1) Unit teratas (top_units) (cuplikan): "
+            + ", ".join([f"{x['kode_unit']}" for x in top_preview])
+            + "\n"
+            "2) Unit gap (gap_units) (cuplikan): "
+            + (", ".join([f"{x['kode_unit']}: {x['similarity']:.3f}" for x in gap_preview])
+               if gap_preview else "Tidak terdeteksi")
+            + "\n"
+            "3) Rekomendasi: fokus pada gap_units untuk meningkatkan kecocokan terhadap job."
+        )
 
 
 @app.post("/api/v1/match")
@@ -403,17 +418,15 @@ async def match_multi(data: MatchMultiRequest):
 
             # Limit pemanggilan OpenRouter untuk mencegah quota limit
             MAX_OPENROUTER_JOBS = 3
-            ai_text = None
-            if idx < MAX_OPENROUTER_JOBS:
-                ai_text = _generate_ai_analysis(
-                    data.cv_text,
-                    job_text,
-                    score,
-                    cocok_label,
-                    cocok_prob,
-                    formatted_top_units,
-                    gap_units,
-                )
+            ai_text = _generate_ai_analysis(
+                data.cv_text,
+                job_text,
+                score,
+                cocok_label,
+                cocok_prob,
+                formatted_top_units,
+                gap_units,
+            ) if idx < MAX_OPENROUTER_JOBS else None
 
             results.append(
                 {
@@ -485,9 +498,14 @@ async def generate_interview(data: InterviewRequest):
             safe_job = redact_pii(data.job_text)
 
             prompt = (
-                "Buat 5 pertanyaan interview teknis SKKNI dalam Bahasa Indonesia. "
-                f"CV: {safe_cv[:200]}. Job: {safe_job[:200]}. Unit: {data.skkni_unit}. "
-                "Berikan juga pertanyaan lanjutan (follow-up) untuk menguji kedalaman kandidat."
+                "Buat 1 pertanyaan interview teknis utama SKKNI dalam Bahasa Indonesia untuk unit: "
+                f"{data.skkni_unit}. "
+                f"CV (PII tersensor): {safe_cv[:200]}. Job (PII tersensor): {safe_job[:200]}. "
+                "Setelah pertanyaan utama, buat 2 pertanyaan follow-up untuk menguji kedalaman kandidat. "
+                "Jawab dalam format:\n"
+                "- Pertanyaan Utama: ...\n"
+                "- Follow-up 1: ...\n"
+                "- Follow-up 2: ..."
             )
 
             text = _openrouter_chat(prompt, model_id=model_id)
