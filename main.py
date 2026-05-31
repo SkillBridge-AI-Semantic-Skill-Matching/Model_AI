@@ -177,7 +177,7 @@ def _openrouter_chat(prompt: str, *, model_id: str | None = None) -> str:
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.2,
-        "max_tokens": 512
+        "max_tokens": 2000
     }
 
     r = requests.post(OPENROUTER_CHAT_URL, headers=headers,
