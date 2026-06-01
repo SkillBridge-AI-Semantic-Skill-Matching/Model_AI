@@ -177,7 +177,7 @@ def _openrouter_chat(prompt: str, *, model_id: str | None = None) -> str:
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.2,
-        "max_tokens": 512
+        "max_tokens": 2000
     }
 
     r = requests.post(OPENROUTER_CHAT_URL, headers=headers,
@@ -222,32 +222,232 @@ def _predict_cocok_tidak(cv_text: str, job_text: str):
     return label, p1
 
 
-def _topk_skkni(cv_text: str, job_text: str, top_k: int = 5):
-    emb_cv = get_embedding(cv_text)
-    emb_job = get_embedding(job_text)
-    emb_pair = (emb_cv + emb_job) / 2.0
-    emb_pair = emb_pair.reshape(1, -1)
+SKILL_GROUPS = {
+    "backend": [
+        ("Python", [r"\bpython\b"]),
+        ("Django", [r"\bdjango\b"]),
+        ("Flask", [r"\bflask\b"]),
+        ("FastAPI", [r"\bfastapi\b"]),
+        ("Laravel", [r"\blaravel\b"]),
+        ("Express", [r"\bexpress\b", r"\bexpressjs\b", r"\bexpress\.js\b"]),
+        ("Node.js", [r"\bnode\b", r"\bnode\.js\b", r"\bnodejs\b"]),
+        ("Spring Boot", [r"\bspring\b", r"\bspring boot\b"]),
+        ("NestJS", [r"\bnestjs\b", r"\bnest\.js\b"]),
+        ("JWT", [r"\bjwt\b", r"\bjson web token\b"]),
+        ("REST API", [r"\brest api\b", r"\brestful api\b",
+         r"\brestful\b", r"\brest\b"]),
+        ("GraphQL", [r"\bgraphql\b"]),
+        ("gRPC", [r"\bgrpc\b"]),
+        ("Microservices", [r"\bmicroservices\b", r"\bmicroservice\b"]),
+    ],
+    "frontend": [
+        ("HTML", [r"\bhtml\b", r"\bhtml5\b"]),
+        ("CSS", [r"\bcss\b", r"\bcss3\b"]),
+        ("JavaScript", [r"\bjavascript\b", r"\bjs\b"]),
+        ("TypeScript", [r"\btypescript\b", r"\bts\b"]),
+        ("React", [r"\breact\b", r"\breact\.js\b", r"\breactjs\b"]),
+        ("Vue", [r"\bvue\b", r"\bvue\.js\b", r"\bvuejs\b"]),
+        ("Angular", [r"\bangular\b", r"\bangularjs\b"]),
+        ("Next.js", [r"\bnext\b", r"\bnext\.js\b", r"\bnextjs\b"]),
+        ("Nuxt", [r"\bnuxt\b", r"\bnuxt\.js\b"]),
+        ("Svelte", [r"\bsvelte\b"]),
+        ("Tailwind CSS", [r"\btailwind\b", r"\btailwindcss\b"]),
+        ("Bootstrap", [r"\bbootstrap\b"]),
+        ("jQuery", [r"\bjquery\b"]),
+    ],
+    "devops": [
+        ("Docker", [r"\bdocker\b", r"\bdocker-compose\b"]),
+        ("Kubernetes", [r"\bkubernetes\b", r"\bk8s\b"]),
+        ("Jenkins", [r"\bjenkins\b"]),
+        ("Ansible", [r"\bansible\b"]),
+        ("Terraform", [r"\bterraform\b"]),
+        ("CI/CD", [r"\bci/cd\b", r"\bcicd\b",
+         r"\bcontinuous integration\b", r"\bcontinuous deployment\b"]),
+        ("Git", [r"\bgit\b", r"\bversion control\b"]),
+        ("GitHub", [r"\bgithub\b"]),
+        ("GitLab", [r"\bgitlab\b"]),
+        ("AWS", [r"\baws\b", r"\bamazon web services\b"]),
+        ("GCP", [r"\bgcp\b", r"\bgoogle cloud\b"]),
+        ("Azure", [r"\bazure\b"]),
+        ("Nginx", [r"\bnginx\b"]),
+        ("Apache", [r"\bapache\b"]),
+        ("Linux", [r"\blinux\b"]),
+        ("Bash", [r"\bbash\b", r"\bshell script\b"]),
+    ],
+    "database": [
+        ("MySQL", [r"\bmysql\b"]),
+        ("PostgreSQL", [r"\bpostgresql\b", r"\bpostgres\b"]),
+        ("MongoDB", [r"\bmongodb\b", r"\bmongo\b"]),
+        ("Redis", [r"\bredis\b"]),
+        ("SQLite", [r"\bsqlite\b"]),
+        ("Oracle", [r"\boracle\b"]),
+        ("MariaDB", [r"\bmariadb\b"]),
+        ("Elasticsearch", [r"\belasticsearch\b"]),
+    ],
+    "ml": [
+        ("Machine Learning", [r"\bmachine learning\b", r"\bml\b"]),
+        ("Deep Learning", [r"\bdeep learning\b", r"\bdl\b"]),
+        ("TensorFlow", [r"\btensorflow\b", r"\btf\b"]),
+        ("PyTorch", [r"\bpytorch\b"]),
+        ("Keras", [r"\bkeras\b"]),
+        ("Scikit-Learn", [r"\bscikit-learn\b", r"\bsklearn\b"]),
+        ("Pandas", [r"\bpandas\b"]),
+        ("NumPy", [r"\bnumpy\b"]),
+        ("NLP", [r"\bnlp\b", r"\bnatural language processing\b"]),
+        ("Computer Vision", [r"\bcomputer vision\b", r"\bcv\b"]),
+        ("Data Warehouse", [r"\bdata warehouse\b", r"\bdwh\b"]),
+        ("ETL", [r"\betl\b"]),
+        ("Kafka", [r"\bkafka\b"]),
+    ],
+    "ui_ux": [
+        ("Figma", [r"\bfigma\b"]),
+        ("Adobe XD", [r"\badobe xd\b"]),
+        ("Sketch", [r"\bsketch\b"]),
+        ("Photoshop", [r"\bphotoshop\b"]),
+        ("Illustrator", [r"\billustrator\b"]),
+        ("UI/UX", [r"\bui/ux\b", r"\bui ux\b",
+         r"\buser interface\b", r"\buser experience\b"]),
+    ],
+    "business_finance": [
+        ("Accounting", [r"\baccounting\b", r"\bakuntansi\b"]),
+        ("Finance", [r"\bfinance\b", r"\bkeuangan\b"]),
+        ("Auditing", [r"\baudit\b", r"\bauditing\b"]),
+        ("Taxation", [r"\btax\b", r"\btaxation\b", r"\bpajak\b"]),
+        ("Excel", [r"\bexcel\b", r"\bspreadsheet\b"]),
+        ("SAP", [r"\bsap\b"]),
+        ("Accurate", [r"\baccurate\b"]),
+    ],
+}
+
+
+def extract_skills(text: str) -> set[str]:
+    import re
+    text_lower = text.lower()
+    found = set()
+    for group_name, skills in SKILL_GROUPS.items():
+        for display_name, patterns in skills:
+            for pat in patterns:
+                if re.search(pat, text_lower):
+                    found.add(display_name)
+                    break
+    return found
+
+
+def extract_skills_matching(cv_text: str, job_text: str, sim_score: float):
+    job_skills = extract_skills(job_text)
+    cv_skills = extract_skills(cv_text)
+
+    matched_skills = sorted(list(job_skills & cv_skills))
+    missing_skills = sorted(list(job_skills - cv_skills))
+
+    # Pastikan semantic selalu dalam skala 0..1 (menghindari count vs score tercampur)
+    semantic_100 = max(0.0, min(100.0, float(sim_score)))
+    semantic_norm = semantic_100 / 100.0
+
+    if not job_skills:
+        # tidak ada bukti keyword dari job => pakai semantic langsung
+        skill_match = int(round(min(95.0, semantic_100)))
+        return skill_match, matched_skills, missing_skills
+
+    job = len(job_skills)
+    matched = len(matched_skills)
+    missing = len(missing_skills)
+
+    # Min denominator menghindari overconfident saat job cuma 1 skill
+    min_denominator = 3
+    denom = max(job, min_denominator)
+
+    # Keyword evidence + gap penalty dalam skala 0..1 (bukan 0..100)
+    keyword_cov = matched / denom          # coverage
+    gap_ratio = missing / denom           # semakin besar missing => semakin jelek
+
+    # Gap penalty dibuat lebih meaningful namun tetap terkurang
+    # quality_keyword ~ 0..1
+    gap_strength = 0.9
+    keyword_quality = max(0.0, keyword_cov - (gap_ratio * gap_strength))
+
+    # confidence keyword: saat job_skills kecil, bobot keyword turun (semantic lebih dominan)
+    if job <= 1:
+        keyword_weight = 0.35
+    elif job <= 3:
+        keyword_weight = 0.55
+    else:
+        keyword_weight = 0.75
+    semantic_weight = 1.0 - keyword_weight
+
+    combined_norm = (keyword_quality * keyword_weight) + \
+        (semantic_norm * semantic_weight)
+
+    # Non-linear mapping supaya skor lebih spread (low variance berkurang)
+    # combined_norm dekat 0 akan turun lebih cepat, dekat 1 tetap naik.
+    gamma = 0.85
+    combined_norm_spread = combined_norm ** gamma
+
+    skill_match = int(round(max(0.0, min(95.0, combined_norm_spread * 100.0))))
+    return skill_match, matched_skills, missing_skills
+
+
+def _calibrate_prediction(p1: float, score: float):
+    # Sigmoid mapping based on score to scale probability
+    scale = 1.0 / (1.0 + np.exp(-0.15 * (score - 50.0)))
+    calibrated_prob = float(p1 * scale)
+    calibrated_prob = max(0.0, min(1.0, calibrated_prob))
+    # Threshold at 0.5 on calibrated probability
+    label = 1 if (calibrated_prob >= 0.5 and score >= 45.0) else 0
+    return label, calibrated_prob
+
+
+def _analyze_skkni(cv_text: str, job_text: str, top_k: int = 5):
+    emb_cv = get_embedding(cv_text).reshape(1, -1)
+    emb_job = get_embedding(job_text).reshape(1, -1)
 
     with open("skkni_embeddings.json", "r", encoding="utf-8") as f:
         skkni = json.load(f)
 
-    scored = []
+    # 1. Deduplicate by kode_unit
+    seen_units = {}
     for item in skkni:
+        ku = item["kode_unit"]
+        if ku not in seen_units:
+            seen_units[ku] = item
+
+    # 2. Score unique SKKNI units against job embedding to find job requirements
+    job_scored = []
+    for ku, item in seen_units.items():
         unit_emb = np.array(item["embedding"], dtype=np.float32).reshape(1, -1)
-        sim = float(cosine_similarity(emb_pair, unit_emb)[0, 0])
-        scored.append((item["kode_unit"], item.get("judul_unit", ""), sim))
+        job_sim = float(cosine_similarity(emb_job, unit_emb)[0, 0])
+        job_scored.append((item, job_sim))
 
-    scored.sort(key=lambda x: x[2], reverse=True)
-    return scored[: max(1, top_k)]
+    job_scored.sort(key=lambda x: x[1], reverse=True)
+    # Take top 10 relevant units for this job
+    job_requirements = job_scored[:10]
 
+    # 3. Score against CV embedding
+    scored_against_cv = []
+    for item, job_sim in job_requirements:
+        unit_emb = np.array(item["embedding"], dtype=np.float32).reshape(1, -1)
+        cv_sim = float(cosine_similarity(emb_cv, unit_emb)[0, 0])
+        scored_against_cv.append(
+            (item["kode_unit"], item.get("judul_unit", ""), cv_sim))
 
-def _compute_gap_units(top_units, sim, gap_threshold):
-    gap_units = []
-    for u, t, s in top_units:
-        if s < gap_threshold:
-            gap_units.append(
-                {"kode_unit": u, "judul_unit": t, "similarity": round(s, 6)})
-    return gap_units
+    # top_units: sorted by CV similarity descending (Strengths)
+    top_units = sorted(scored_against_cv,
+                       key=lambda x: x[2], reverse=True)[:top_k]
+
+    # gap_units: sorted by CV similarity ascending (Gaps / Weaknesses)
+    gap_candidates = sorted(
+        scored_against_cv, key=lambda x: x[2], reverse=False)
+    gap_units_raw = [x for x in gap_candidates if x[2] < 0.55][:top_k]
+    if not gap_units_raw:
+        gap_units_raw = gap_candidates[:2]
+
+    # Format gap units as a list of dicts
+    gap_units = [
+        {"kode_unit": u, "judul_unit": t, "similarity": round(s, 6)}
+        for (u, t, s) in gap_units_raw
+    ]
+
+    return top_units, gap_units
 
 
 def _generate_ai_analysis(
@@ -315,6 +515,18 @@ async def calculate_match(data: MatchRequest):
             data.cv_text), get_embedding(data.job_text))[0][0]
         score = round(float(sim) * 100, 2)
 
+        if score >= 75:
+            kategori = "Sangat Cocok"
+        elif score >= 60:
+            kategori = "Cocok"
+        elif score >= 45:
+            kategori = "Cukup Cocok"
+        else:
+            kategori = "Kurang Cocok"
+
+        skill_match, matched_skills, missing_skills = extract_skills_matching(
+            data.cv_text, data.job_text, score)
+
         cocok_label, cocok_prob = None, None
         try:
             cocok_label, cocok_prob = _predict_cocok_tidak(
@@ -322,13 +534,16 @@ async def calculate_match(data: MatchRequest):
         except Exception:
             cocok_label, cocok_prob = None, None
 
-        top_units = _topk_skkni(data.cv_text, data.job_text, top_k=5)
+        calibrated_label, calibrated_prob = 0, 0.0
+        if cocok_prob is not None:
+            calibrated_label, calibrated_prob = _calibrate_prediction(
+                cocok_prob, score)
+
+        top_units, gap_units = _analyze_skkni(
+            data.cv_text, data.job_text, top_k=5)
         formatted_top_units = [
             {"kode_unit": u, "judul_unit": t, "similarity": round(s, 6)} for (u, t, s) in top_units
         ]
-
-        gap_threshold = max(-0.05, (float(sim) - 0.2) / 1.0)
-        gap_units = _compute_gap_units(top_units, float(sim), gap_threshold)
 
         group_label = infer_group_label_bahasa_panjang(data.cv_text)
         add_event(
@@ -336,7 +551,7 @@ async def calculate_match(data: MatchRequest):
             {
                 "group_label": group_label,
                 "match_score": float(score),
-                "prob_cocok": float(cocok_prob) if cocok_prob is not None else None,
+                "prob_cocok": float(calibrated_prob),
                 "has_gap": len(gap_units) > 0,
             },
         )
@@ -344,19 +559,29 @@ async def calculate_match(data: MatchRequest):
         return {
             "success": True,
             "match_score": score,
-            "prediksi_cocok": cocok_label,
-            "prob_cocok": cocok_prob,
+            "kategori": kategori,
+            "skill_match": skill_match,
+            "matched_skills": matched_skills,
+            "missing_skills": missing_skills,
             "top_units": formatted_top_units,
             "gap_units": gap_units,
             "ai_analysis": _generate_ai_analysis(
                 data.cv_text,
                 data.job_text,
                 score,
-                cocok_label,
-                cocok_prob,
+                calibrated_label,
+                calibrated_prob,
                 formatted_top_units,
                 gap_units,
             ),
+            "debug_info": {
+                "prediksi_cocok": calibrated_label,
+                "prob_cocok": round(calibrated_prob, 6),
+                "job_skills_count": len(extract_skills(data.job_text)),
+                "cv_skills_count": len(extract_skills(data.cv_text)),
+                "matched_skills_count": len(matched_skills),
+                "missing_skills_count": len(missing_skills),
+            }
         }
 
     except Exception as e:
@@ -386,6 +611,24 @@ async def match_multi(data: MatchMultiRequest):
             sim = cosine_similarity(emb_cv, emb_job)[0][0]
             score = round(float(sim) * 100, 2)
 
+            if score >= 75:
+                kategori = "Sangat Cocok"
+            elif score >= 60:
+                kategori = "Cocok"
+            elif score >= 45:
+                kategori = "Cukup Cocok"
+            else:
+                kategori = "Kurang Cocok"
+
+            skill_match, matched_skills, missing_skills = extract_skills_matching(
+                data.cv_text, job_text, score)
+
+            # diagnostik jumlah skill yang terdeteksi (untuk audit overconfidence)
+            job_skills_count = len(extract_skills(job_text))
+            cv_skills_count = len(extract_skills(data.cv_text))
+            matched_skills_count = len(matched_skills)
+            missing_skills_count = len(missing_skills)
+
             cocok_label, cocok_prob = None, None
             try:
                 cocok_label, cocok_prob = _predict_cocok_tidak(
@@ -393,14 +636,16 @@ async def match_multi(data: MatchMultiRequest):
             except Exception:
                 cocok_label, cocok_prob = None, None
 
-            top_units = _topk_skkni(data.cv_text, job_text, top_k=data.top_k)
+            calibrated_label, calibrated_prob = 0, 0.0
+            if cocok_prob is not None:
+                calibrated_label, calibrated_prob = _calibrate_prediction(
+                    cocok_prob, score)
+
+            top_units, gap_units = _analyze_skkni(
+                data.cv_text, job_text, top_k=data.top_k)
             formatted_top_units = [
                 {"kode_unit": u, "judul_unit": t, "similarity": round(s, 6)} for (u, t, s) in top_units
             ]
-
-            gap_threshold = max(-0.05, (float(sim) - 0.2) / 1.0)
-            gap_units = _compute_gap_units(
-                top_units, float(sim), gap_threshold)
 
             group_label = infer_group_label_bahasa_panjang(data.cv_text)
             try:
@@ -409,67 +654,127 @@ async def match_multi(data: MatchMultiRequest):
                     {
                         "group_label": group_label,
                         "match_score": float(score),
-                        "prob_cocok": float(cocok_prob) if cocok_prob is not None else None,
+                        "prob_cocok": float(calibrated_prob),
                         "has_gap": len(gap_units) > 0,
                     },
                 )
             except Exception:
                 pass
 
-            # Limit pemanggilan OpenRouter untuk mencegah quota limit
-            MAX_OPENROUTER_JOBS = 3
-            ai_text = _generate_ai_analysis(
-                data.cv_text,
-                job_text,
-                score,
-                cocok_label,
-                cocok_prob,
-                formatted_top_units,
-                gap_units,
-            ) if idx < MAX_OPENROUTER_JOBS else None
+            # ai_analysis akan di-generate belakangan hanya untuk top-3 (berdasarkan match_score)
 
             results.append(
                 {
                     "job_id": job_id,
                     "job_index": idx,
                     "match_score": score,
-                    "prediksi_cocok": cocok_label,
-                    "prob_cocok": cocok_prob,
+                    "kategori": kategori,
+                    "skill_match": skill_match,
+                    "matched_skills": matched_skills,
+                    "missing_skills": missing_skills,
                     "top_units": formatted_top_units,
                     "gap_units": gap_units,
-                    "ai_analysis": ai_text,
+                    "debug_info": {
+                        "prediksi_cocok": calibrated_label,
+                        "prob_cocok": round(calibrated_prob, 6),
+                        "job_skills_count": job_skills_count,
+                        "cv_skills_count": cv_skills_count,
+                        "matched_skills_count": matched_skills_count,
+                        "missing_skills_count": missing_skills_count,
+                    },
+                    "_llm_payload": {
+                        "cv_text": data.cv_text,
+                        "job_text": job_text,
+                        "score": score,
+                        "cocok_label": calibrated_label,
+                        "cocok_prob": calibrated_prob,
+                        "formatted_top_units": formatted_top_units,
+                        "gap_units": gap_units,
+                    },
+                    "ai_analysis": None,
                 }
             )
 
-        return {"success": True, "results": results}
+        # Sort by match_score descending, then generate AI only for top-3
+        MAX_OPENROUTER_JOBS = 3
+        results_sorted = sorted(
+            results, key=lambda x: x["match_score"], reverse=True)
+        top_results = results_sorted[:MAX_OPENROUTER_JOBS]
+
+        for r in top_results:
+            p = r["_llm_payload"]
+            r["ai_analysis"] = _generate_ai_analysis(
+                p["cv_text"],
+                p["job_text"],
+                p["score"],
+                p["cocok_label"],
+                p["cocok_prob"],
+                p["formatted_top_units"],
+                p["gap_units"],
+            )
+
+        # cleanup payload for all results
+        for r in results_sorted:
+            if "_llm_payload" in r:
+                del r["_llm_payload"]
+
+        return {"success": True, "results": results_sorted}
 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)
+                            )@app.post("/api/v1/match-topk")
 
 
-@app.post("/api/v1/match-topk")
 async def match_topk(data: MatchTopKRequest):
     try:
+        sim = cosine_similarity(get_embedding(
+            data.cv_text), get_embedding(data.job_text))[0][0]
+        score = round(float(sim) * 100, 2)
+        if score >= 75:
+            kategori = "Sangat Cocok"
+        elif score >= 60:
+            kategori = "Cocok"
+        elif score >= 45:
+            kategori = "Cukup Cocok"
+        else:
+            kategori = "Kurang Cocok"
+
+        skill_match, matched_skills, missing_skills = extract_skills_matching(
+            data.cv_text, data.job_text, score)
+
         cocok_label, cocok_prob = _predict_cocok_tidak(
             data.cv_text, data.job_text)
         status = "Cocok" if cocok_label == 1 else "Tidak Cocok"
         is_trust = cocok_prob is not None and cocok_prob >= (
             1.0 - data.similarity_threshold)
 
-        top_units = _topk_skkni(data.cv_text, data.job_text, top_k=data.top_k)
+        calibrated_label, calibrated_prob = 0, 0.0
+        if cocok_prob is not None:
+            calibrated_label, calibrated_prob = _calibrate_prediction(
+                cocok_prob, score)
+
+        top_units, _ = _analyze_skkni(
+            data.cv_text, data.job_text, top_k=data.top_k)
         formatted_units = [
             {"kode_unit": u, "judul_unit": t, "similarity": round(s, 6)} for (u, t, s) in top_units
         ]
 
         return {
             "success": True,
-            "prediksi_cocok": cocok_label,
-            "prob_cocok": float(cocok_prob) if cocok_prob is not None else None,
+            "match_score": score,
+            "kategori": kategori,
+            "skill_match": skill_match,
+            "matched_skills": matched_skills,
+            "missing_skills": missing_skills,
             "status": status,
             "auto_assign": is_trust,
             "top_units": formatted_units,
+            "debug_info": {
+                "prediksi_cocok": calibrated_label,
+                "prob_cocok": round(calibrated_prob, 6)
+            }
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
