@@ -56,6 +56,14 @@ python -m venv venv
 source venv/bin/activate
 ```
 
+**Konfigurasi API Key (Qwen):**
+Sistem ini menggunakan integrasi model Qwen (via OpenRouter API) untuk fitur *AI Interview Question Generator*. Anda perlu mengatur file *environment*.
+1. Buat file bernama `.env` di direktori utama (root).
+2. Tambahkan API Key Anda ke dalam file `.env`:
+```env
+OPENROUTER_API_KEY=masukkan_api_key_qwen_anda_disini
+```
+
 ### 2. Instalasi Dependensi
 
 Instal semua pustaka yang dibutuhkan melalui `requirements.txt`:
